@@ -31,3 +31,4 @@ This is a Python script that scans nearby Wi-Fi networks and displays:
 
 ```bash
 python wifi_scanner.py
+
