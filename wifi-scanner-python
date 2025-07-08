@@ -1,0 +1,94 @@
+import platform
+import subprocess
+import re
+
+def scan_windows():
+    print("🔍 Scanning Wi-Fi on Windows...\n")
+    result = subprocess.check_output(["netsh", "wlan", "show", "networks", "mode=bssid"], shell=True)
+    result = result.decode('utf-8', errors="ignore").split('\n')
+
+    networks = []
+    network = {}
+
+    for line in result:
+        line = line.strip()
+        if line.startswith("SSID"):
+            if network:
+                networks.append(network)
+                network = {}
+            ssid = re.search(r'SSID \d+ : (.+)', line)
+            if ssid:
+                network["SSID"] = ssid.group(1)
+        elif "BSSID" in line:
+            bssid = re.search(r'BSSID \d+ : (.+)', line)
+            if bssid:
+                network["BSSID"] = bssid.group(1)
+        elif "Signal" in line:
+            signal = re.search(r'Signal : (\d+)%', line)
+            if signal:
+                strength = int(signal.group(1))
+                network["Signal"] = f"{strength}%"
+                network["Range"] = estimate_range(strength)
+
+    if network:
+        networks.append(network)
+
+    return networks
+
+def scan_linux():
+    print("🔍 Scanning Wi-Fi on Linux...\n")
+    try:
+        result = subprocess.check_output(["nmcli", "-f", "SSID,BSSID,SIGNAL", "dev", "wifi"], stderr=subprocess.DEVNULL)
+        result = result.decode("utf-8", errors="ignore").split('\n')[1:]  # Skip header
+        networks = []
+
+        for line in result:
+            if not line.strip():
+                continue
+            parts = line.split()
+            ssid = " ".join(parts[:-2])
+            bssid = parts[-2]
+            signal = int(parts[-1])
+            network = {
+                "SSID": ssid,
+                "BSSID": bssid,
+                "Signal": f"{signal}%",
+                "Range": estimate_range(signal)
+            }
+            networks.append(network)
+        return networks
+    except FileNotFoundError:
+        print("❌ nmcli not found. Please install NetworkManager CLI.")
+        return []
+
+def estimate_range(signal_strength):
+    if signal_strength >= 80:
+        return "Very Close"
+    elif signal_strength >= 60:
+        return "Nearby"
+    elif signal_strength >= 40:
+        return "Medium"
+    elif signal_strength >= 20:
+        return "Far"
+    else:
+        return "Very Far"
+
+def print_networks(networks):
+    for i, net in enumerate(networks):
+        print(f"📶 Network {i+1}")
+        print(f"SSID   : {net.get('SSID', 'N/A')}")
+        print(f"BSSID  : {net.get('BSSID', 'N/A')}")
+        print(f"Signal : {net.get('Signal', 'N/A')} ({net.get('Range', 'Unknown')})")
+        print("-" * 30)
+
+if __name__ == "__main__":
+    os_type = platform.system().lower()
+    if "windows" in os_type:
+        nets = scan_windows()
+    elif "linux" in os_type:
+        nets = scan_linux()
+    else:
+        print("❌ Unsupported OS. This script works only on Windows and Linux.")
+        nets = []
+
+    print_networks(nets)
